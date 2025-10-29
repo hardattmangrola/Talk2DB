@@ -6,31 +6,34 @@ It also provides a lightweight textual schema that is used to help the AI
 model produce valid SQL for this specific database.
 """
 
-import mysql.connector
-from config import Config
+import mysql.connector #imports the mysql.connector module into memory.
+from config import Config #Imports the Config class from the config.py file
 
-
+#Defines a new class object named DatabaseManager
 class DatabaseManager:
     """Manage a single MySQL connection used by the API.
 
     Note: For production use you would typically use a connection pool. This
     simple manager is suitable for development and small deployments.
     """
-
+    #Input: self → an instance of DatabaseManager.
+    #Output: Initializes the instance; returns None.
     def __init__(self):
         # Load DB configuration and establish connection immediately
-        self.config = Config()
-        self.connection = None
-        self.connect()
+        self.config = Config() #Calls the Config class (no external argument).It Creates an instance of Config and assigns it to self.config.
+        self.connection = None #Sets the attribute connection to None.
+        self.connect() #Establishes a MySQL connection; returns None
 
+    #Establishes connection and assigns to self.connection. Returns None.
     def connect(self):
         """Establish database connection using config values."""
         try:
+            #Returns a mysql.connector.connection.MySQLConnection object and assigns it to self.connection
             self.connection = mysql.connector.connect(
-                host=self.config.DB_HOST,
-                user=self.config.DB_USER,
-                password=self.config.DB_PASSWORD,
-                database=self.config.DB_NAME
+                host=self.config.DB_HOST, #string
+                user=self.config.DB_USER, #string
+                password=self.config.DB_PASSWORD, #string
+                database=self.config.DB_NAME #string
             )
             # Informational print for local dev logs
             print("Database connected successfully")
@@ -38,7 +41,7 @@ class DatabaseManager:
             # Print and re-raise so the app can fail-fast if DB is unreachable
             print(f"Database connection error: {e}")
             raise
-
+    ##Output: Returns query results as a list of dict
     def execute_query(self, query):
         """Execute SQL query and return results as a list of dicts.
 
@@ -46,11 +49,16 @@ class DatabaseManager:
         Python dicts which are JSON-serializable by Flask's jsonify.
         """
         try:
-            cursor = self.connection.cursor(dictionary=True)
-            cursor.execute(query)
-            results = cursor.fetchall()
+            cursor = self.connection.cursor(dictionary=True) 
+            #Input: Boolean flag dictionary=True.
+            #Output: Returns a MySQLCursorDict object (cursor that outputs dicts).
+            cursor.execute(query) 
+            #Input:query (string SQL statement).
+            #Output: Executes SQL command → returns None.
+            results = cursor.fetchall() #Output: Returns all fetched rows as a list of dictionaries (List[Dict[str, Any]]).
             cursor.close()
             return results
+        #Catches and binds the exception to variable e. Type: mysql.connector.errors.Error
         except mysql.connector.Error as e:
             # Print error for debugging and re-raise for higher-level handling
             print(f"Query execution error: {e}")
@@ -61,6 +69,7 @@ class DatabaseManager:
         if self.connection:
             self.connection.close()
 
+    #Returns a textual (string) schema description.
     def get_schema(self):
         """Return a textual representation of the database schema.
 

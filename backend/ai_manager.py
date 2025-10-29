@@ -4,7 +4,7 @@ from config import Config
 
 def _safe_extract_text(response):
     """
-    Robustly extract text from a generative AI response object.
+    Extract text from a generative AI response object.
 
     Different versions of the generative AI SDK may return different shapes
     (objects, dicts, nested parts). This helper tries multiple common access
@@ -14,13 +14,13 @@ def _safe_extract_text(response):
     missing.
     """
     try:
-        # Prefer attribute access (SDK object with .text)
+        # If response is an object with .text property → return that.
         if hasattr(response, "text") and response.text is not None:
             return str(response.text)
 
         # Some SDKs return a simple dict-like structure
         if isinstance(response, dict):
-            # common 'candidates' pattern
+            # If response is a dict → it may have keys like "candidates", "outputs", or "output".
             candidates = response.get("candidates") or response.get("outputs") or response.get("output")
             if candidates:
                 # handle list or single candidate
@@ -45,13 +45,13 @@ def _safe_extract_text(response):
                             elif isinstance(content, str) and content:
                                 return content
 
-            # fallback to common top-level keys
+            # If none of the above, it checks top-level keys like "text" or "message".
             for key in ("text", "content", "message", "output_text", "response"):
                 if key in response and response[key]:
                     return str(response[key])
 
         # Some SDKs return objects with nested attributes
-        # Try common attribute paths defensively
+        # If response is an object with .candidates, it tries .candidates[0].text.
         if hasattr(response, "candidates"):
             c = getattr(response, "candidates")
             if isinstance(c, (list, tuple)) and len(c) > 0:
@@ -60,6 +60,7 @@ def _safe_extract_text(response):
                     return str(first.text)
 
         # Last resort: stringify the whole response
+        #Fallback: Return the entire object stringified, so the program never crashes.
         return str(response)
     except Exception:
         # If extraction fails, return a safe stringified fallback
