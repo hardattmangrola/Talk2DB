@@ -1,6 +1,8 @@
-# Natural Language to SQL & CSV Analysis Application
+# TALK2DB
+A modern LLM-powered Natural Language Query System that enables users to retrieve and analyze information from a MySQL database using plain English queries, eliminating the need to write SQL manually.
+Talk2DB enables users to retrieve and analyze data using natural language queries, eliminating the need for SQL expertise.
+Users can also upload multiple CSV files, which the system analyzes, relates, and integrates dynamically to create a unified data model for comprehensive querying.
 
-A modern React frontend with Flask backend that allows users to query databases using natural language and analyze CSV files with AI assistance.
 ## Snapshots:
 ### System Architecture 
 ![image_alt](https://github.com/hardattmangrola/Talk2DB/blob/ad61a6e88082ecc907020bfb367b8c19b5ee44a4/screenshots/ui0.png)
