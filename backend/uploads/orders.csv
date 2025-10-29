@@ -1,6 +1,0 @@
-order_id,customer_id,product_name,amount,order_date
-101,1,Laptop,75000,2025-10-10
-102,2,Headphones,3500,2025-10-12
-103,1,Mouse,900,2025-10-15
-104,3,Monitor,12500,2025-10-16
-105,5,Keyboard,2000,2025-10-17
