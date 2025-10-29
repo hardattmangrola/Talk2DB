@@ -1,6 +1,15 @@
 # Natural Language to SQL & CSV Analysis Application
 
 A modern React frontend with Flask backend that allows users to query databases using natural language and analyze CSV files with AI assistance.
+## Snapshots:
+### System Architecture 
+![image_alt](https://github.com/hardattmangrola/Talk2DB/blob/ad61a6e88082ecc907020bfb367b8c19b5ee44a4/screenshots/ui0.png)
+### Multlingual Support 
+![image_alt](https://github.com/hardattmangrola/Talk2DB/blob/ad61a6e88082ecc907020bfb367b8c19b5ee44a4/screenshots/ui1.png)
+### Identify Relationship between Multiple CSVs
+![image_alt](https://github.com/hardattmangrola/Talk2DB/blob/ad61a6e88082ecc907020bfb367b8c19b5ee44a4/screenshots/ui2.png)
+### Querying CSV
+![image_alt](https://github.com/hardattmangrola/Talk2DB/blob/ad61a6e88082ecc907020bfb367b8c19b5ee44a4/screenshots/ui3.png)
 
 ## Features
 
