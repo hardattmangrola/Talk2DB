@@ -1,3 +1,4 @@
+# main backend application
 """Flask backend API.
 
 This module exposes endpoints for:
