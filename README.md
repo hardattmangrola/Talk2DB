@@ -31,7 +31,7 @@ Users can also upload multiple CSV files, which the system analyzes, relates, an
 - Dark/Light mode toggle
 - Responsive design with Tailwind CSS
 - Smooth animations with Framer Motion
-- Real-time chat interface
+- Real-time chat interface for user
 
 ## Project Structure
 
