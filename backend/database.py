@@ -71,22 +71,56 @@ class DatabaseManager:
 
     #Returns a textual (string) schema description.
     def get_schema(self):
-        """Return a textual representation of the database schema.
-
-        This is used to provide the AI model with table/column context so it
-        can generate valid SQL tailored to the schema. In a real application
-        this method could introspect the DB instead of returning a hard-coded
-        string.
+        """Return a textual representation of the database schema dynamically.
+        
+        Introspects the information_schema to build the schema string.
         """
-        return """
-Database: library_db
-Tables:
-1. authors(author_id, name, country)
-2. books(book_id, title, author_id, publication_year, genre, available_copies)
-3. members(member_id, name, join_date, membership_type)
-4. loans(loan_id, book_id, member_id, loan_date, return_date, status)
-Relationships:
-- books.author_id -> authors.author_id
-- loans.book_id -> books.book_id
-- loans.member_id -> members.member_id
-"""
+        try:
+            schema_str = f"Database: {self.config.DB_NAME}\nTables:\n"
+            
+            # Get all tables
+            cursor = self.connection.cursor()
+            cursor.execute(f"SHOW TABLES")
+            tables = cursor.fetchall()
+            
+            relationships = []
+            
+            for i, table_row in enumerate(tables):
+                table_name = table_row[0]
+                
+                # Get columns for each table
+                cursor.execute(f"DESCRIBE {table_name}")
+                columns = cursor.fetchall()
+                col_defs = []
+                for col in columns:
+                    col_name = col[0]
+                    col_defs.append(col_name)
+                    
+                schema_str += f"{i+1}. {table_name}({', '.join(col_defs)})\n"
+                
+                # Try to infer simple foreign keys (naive approach or use constraints query)
+                # For simplified version, we just check foreign key constraints
+                cursor.execute(f"""
+                    SELECT 
+                        TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+                    FROM
+                        INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                    WHERE
+                        REFERENCED_TABLE_SCHEMA = '{self.config.DB_NAME}' AND
+                        TABLE_NAME = '{table_name}';
+                """)
+                fks = cursor.fetchall()
+                for fk in fks:
+                    relationships.append(f"- {fk[0]}.{fk[1]} -> {fk[3]}.{fk[4]}")
+
+            cursor.close()
+            
+            if relationships:
+                schema_str += "Relationships:\n" + "\n".join(relationships) + "\n"
+                
+            return schema_str
+            
+        except Exception as e:
+            print(f"Error introspecting schema: {e}")
+            # Fallback to empty or simple message
+            return f"Database: {self.config.DB_NAME} (Error retrieving schema)"

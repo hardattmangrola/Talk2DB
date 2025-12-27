@@ -85,7 +85,8 @@ class AIManager:
         # configure the Google generative AI SDK with the API key
         genai.configure(api_key=self.config.GEMINI_API_KEY)
         # choose a model; this value can be updated via Config if needed
-        self.model = genai.GenerativeModel("gemini-2.5-flash")
+        # Using gemini-pro-vision (works with SDK 0.8.6)
+        self.model = genai.GenerativeModel("gemini-pro")
 
     def generate_sql_query(self, natural_language_query, schema):
         """Convert natural language to a SQL SELECT statement.
@@ -97,13 +98,23 @@ class AIManager:
         Returns a SQL string starting with SELECT or raises an Exception on
         unsafe or failed generation.
         """
+    def generate_sql_query(self, natural_language_query, schema, allow_destructive=False):
+        """Convert natural language query to a SQL statement using Gemini.
+        
+        If allow_destructive is True, the model is allowed to generate multi-line 
+        DML/DDL (DELETE, UPDATE, DROP, etc.) instead of just SELECT.
+        """
+        role_instructions = "Only generate SELECT statements."
+        if allow_destructive:
+            role_instructions = "You are allowed to generate DML and DDL statements (SELECT, DELETE, UPDATE, DROP, ALTER) if the user request requires it."
+
         sql_prompt = f"""
-You are an expert SQL generator. Convert the following natural language query into a valid MySQL SELECT statement.
+You are an expert SQL generator. Convert the following natural language query into a valid MySQL statement.
 Schema:
 {schema}
 
 Rules:
-- Only generate SELECT statements (no DELETE, UPDATE, DROP).
+- {role_instructions}
 - Ensure all table and column names are valid.
 - Do not include explanations or markdown.
 
@@ -117,23 +128,35 @@ SQL:
             response = self.model.generate_content(sql_prompt)
             sql_query = _safe_extract_text(response).strip()
 
-            # Basic safety check: generated SQL should start with SELECT
-            if not sql_query.lower().startswith("select"):
-                raise ValueError("Unsafe or non-SELECT query generated")
+            # Basic safety check
+            sql_lower = sql_query.lower().strip()
+            
+            if not allow_destructive:
+                if not sql_lower.startswith("select"):
+                    # Check if it's a DELETE or DROP query
+                    if sql_lower.startswith("delete") or sql_lower.startswith("drop"):
+                        raise ValueError("Deletion/Drop operations are restricted through the chat interface. Use the admin panel to delete tables. You may not have the required permissions.")
+                    else:
+                        raise ValueError("Unsafe or non-SELECT query generated. Only SELECT queries are allowed through the chat.")
+            else:
+                # For administrators, we allow destructive queries but still exclude very dangerous ones like 'drop database'
+                if "drop database" in sql_lower:
+                    raise ValueError("Database-level DROP operations are not allowed through this interface for safety reasons.")
 
             return sql_query
         except Exception as e:
             # Provide a clear error message to the caller
             raise Exception(f"SQL generation error: {str(e)}")
 
-    def generate_query_explanation(self, sql_query, results):
-        """Generate a short explanation for a SQL query and its results.
+    def generate_query_explanation(self, sql_query, results, language="English"):
+        """Generate a short explanation for a SQL query and its results in the specified language.
 
         Returns a 2-3 sentence explanation string.
         """
         summary_prompt = f"""
 You are a data analyst. Given the following SQL query and its result, write a short, clear explanation
 in 2-3 sentences about what this data represents.
+Respond in {language}.
 
 SQL Query: {sql_query}
 Query Result (sample of up to 5 rows): {results[:5]}
@@ -146,11 +169,12 @@ Explanation:
         except Exception as e:
             raise Exception(f"Explanation generation error: {str(e)}")
 
-    def analyze_csv_files(self, csv_data_summaries):
-        """Analyze CSV files and return a short relationship summary."""
+    def analyze_csv_files(self, csv_data_summaries, language="English"):
+        """Analyze CSV files and return a short relationship summary in the specified language."""
         analysis_prompt = f"""
 You are a data analyst. Determine if the following CSV files are related in any way
 (e.g., shared keys, similar columns, or logical relationships). Give a clear and short summary of your findings.
+Respond in {language}.
 
 CSV Information: {csv_data_summaries}
 
@@ -163,8 +187,8 @@ Answer in 3-4 lines:
         except Exception as e:
             raise Exception(f"CSV analysis error: {str(e)}")
 
-    def query_csv_data(self, user_query, csv_data):
-        """Answer free-text questions about uploaded CSV data."""
+    def query_csv_data(self, user_query, csv_data, language="English"):
+        """Answer free-text questions about uploaded CSV data in the specified language."""
         query_prompt = f"""
 You are an intelligent data analyst.
 You have access to the following CSV datasets:
@@ -173,6 +197,7 @@ You have access to the following CSV datasets:
 The user asked: "{user_query}"
 
 Using reasoning on these CSVs, answer clearly in 3-5 lines.
+Respond in {language}.
 If the answer involves numerical or tabular output, include that in your text naturally.
 """
 
@@ -181,3 +206,21 @@ If the answer involves numerical or tabular output, include that in your text na
             return _safe_extract_text(response).strip()
         except Exception as e:
             raise Exception(f"CSV query error: {str(e)}")
+    def generate_detailed_insights(self, csv_summaries, language="English"):
+        """Generate high-level strategic insights for the dataset."""
+        prompt = f"""
+You are a senior data scientist. Analyze the following summary of a CSV dataset and provide
+5-7 high-level strategic insights, patterns, or anomalies discovered.
+Respond in {language}.
+Include specific mention of outliers or unexpected distributions if present.
+
+Dataset Summary: {csv_summaries}
+
+Key Strategic Insights:
+1. 
+"""
+        try:
+            response = self.model.generate_content(prompt)
+            return _safe_extract_text(response).strip()
+        except Exception as e:
+            raise Exception(f"Insights generation error: {str(e)}")

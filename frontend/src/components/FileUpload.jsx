@@ -1,9 +1,13 @@
 import React, { useState, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { useDarkMode } from '../context/DarkModeContext';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Upload, FileText, X, Check, Minimize2, Maximize2 } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { useAuth } from '../context/AuthContext';
+import ApiService from '../services/apiService';
 
 const FileUpload = ({ onFilesUploaded, onAnalysisComplete }) => {
-  const { darkMode } = useDarkMode();
+  const { user } = useAuth();
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
@@ -23,7 +27,7 @@ const FileUpload = ({ onFilesUploaded, onAnalysisComplete }) => {
   const handleDrop = (e) => {
     e.preventDefault();
     setIsDragOver(false);
-    const files = Array.from(e.dataTransfer.files).filter(file => 
+    const files = Array.from(e.dataTransfer.files).filter(file =>
       file.type === 'text/csv' || file.name.endsWith('.csv')
     );
     if (files.length > 0) {
@@ -41,58 +45,33 @@ const FileUpload = ({ onFilesUploaded, onAnalysisComplete }) => {
   const handleFileUpload = async (files) => {
     setIsUploading(true);
     try {
-      const response = await fetch('/api/upload_csv', {
-        method: 'POST',
-        body: createFormData(files),
-      });
+      // Use ApiService instead of raw fetch
+      const result = await ApiService.uploadCSVFiles(files, user?.token);
 
-      if (!response.ok) {
-        throw new Error('Upload failed');
-      }
-
-      const result = await response.json();
       setUploadedFiles(prev => [...(prev || []), ...files.map(f => f.name)]);
-      
+
       if (onFilesUploaded) {
         onFilesUploaded(result);
       }
 
       // Automatically analyze uploaded files
       await analyzeFiles();
-      
+
       // Auto-minimize after successful upload
       setIsMinimized(true);
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Failed to upload files. Please try again.');
+      alert('Failed to upload files. please check your connection or login status.');
     } finally {
       setIsUploading(false);
     }
   };
 
-  const createFormData = (files) => {
-    const formData = new FormData();
-    files.forEach(file => {
-      formData.append('files', file);
-    });
-    return formData;
-  };
-
   const analyzeFiles = async () => {
     try {
-      const response = await fetch('/api/analyze_csvs', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      // Use ApiService
+      const result = await ApiService.analyzeCSVFiles(user?.token);
 
-      if (!response.ok) {
-        throw new Error('Analysis failed');
-      }
-
-      const result = await response.json();
-      
       if (onAnalysisComplete) {
         onAnalysisComplete(result);
       }
@@ -109,94 +88,64 @@ const FileUpload = ({ onFilesUploaded, onAnalysisComplete }) => {
 
   if (isMinimized) {
     return (
-      <motion.div
-        initial={{ opacity: 0, height: 0 }}
-        animate={{ opacity: 1, height: 'auto' }}
-        exit={{ opacity: 0, height: 0 }}
-        className="mb-4"
-      >
-        <div className={`border-2 border-emerald-400 dark:border-emerald-500 rounded-lg px-4 py-2 transition-all duration-200 ${
-          darkMode ? 'bg-emerald-900/20' : 'bg-emerald-50'
-        }`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                {uploadedFiles.length} file(s) uploaded
-              </span>
+      <div className="mb-4">
+        <div className="flex items-center justify-between rounded-md border bg-background p-2 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md border bg-muted">
+              <FileText className="h-4 w-4" />
             </div>
-            <button
-              onClick={() => setIsMinimized(false)}
-              className="text-sm text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
-            >
-              Expand
-            </button>
+            <span className="text-sm font-medium">
+              {uploadedFiles.length} file(s) uploaded
+            </span>
           </div>
+          <Button variant="ghost" size="icon" onClick={() => setIsMinimized(false)} className="h-8 w-8">
+            <Maximize2 className="h-4 w-4" />
+          </Button>
         </div>
-      </motion.div>
+      </div>
     );
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mb-6"
-    >
+    <div className="mb-6">
       <div
-        className={`border-2 border-dashed rounded-xl transition-all duration-200 ${
-          isDragOver
-            ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20'
-            : 'border-gray-300 dark:border-gray-600 hover:border-emerald-400 dark:hover:border-emerald-500'
-        } ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}
+        className={cn(
+          "relative rounded-lg border-2 border-dashed p-6 transition-all duration-200 ease-in-out text-center",
+          isDragOver ? "border-primary bg-muted/50" : "border-muted-foreground/20 hover:border-primary/50",
+          "bg-card text-card-foreground"
+        )}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        {/* Minimize Button */}
-        <div className="flex justify-end p-2">
-          <button
-            onClick={() => setIsMinimized(true)}
-            className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-            title="Minimize"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-            </svg>
-          </button>
-        </div>
+        <button
+          onClick={() => setIsMinimized(true)}
+          className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
+          title="Minimize"
+        >
+          <Minimize2 className="h-4 w-4" />
+        </button>
 
-        <div className="px-8 pb-8 text-center space-y-4">
-          <div className="mx-auto w-16 h-16 bg-emerald-100 dark:bg-emerald-900 rounded-full flex items-center justify-center">
-            <svg className="w-8 h-8 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
+        <div className="flex flex-col items-center gap-4">
+          <div className="p-3 bg-muted rounded-full">
+            <Upload className="h-6 w-6 text-muted-foreground" />
           </div>
-          
+
           <div>
-            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-              Upload CSV Files
-            </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Drag and drop CSV files here, or click to browse
+            <h3 className="font-semibold mb-1">Upload CSV Files</h3>
+            <p className="text-sm text-muted-foreground">
+              Drag & drop or click to browse
             </p>
           </div>
 
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+          <Button
             onClick={openFileDialog}
             disabled={isUploading}
-            className={`px-6 py-3 rounded-lg font-medium transition-all ${
-              isUploading
-                ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-md hover:shadow-lg'
-            }`}
+            size="sm"
+            className="gap-2"
           >
-            {isUploading ? 'Uploading...' : 'Choose Files'}
-          </motion.button>
+            {isUploading ? 'Uploading...' : 'Select Files'}
+          </Button>
 
           <input
             ref={fileInputRef}
@@ -208,28 +157,23 @@ const FileUpload = ({ onFilesUploaded, onAnalysisComplete }) => {
           />
         </div>
 
-        <div className="px-8">
-          {uploadedFiles.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              className="pt-4 border-t border-gray-200 dark:border-gray-700"
-            >
-              <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
-                Uploaded Files:
-              </h4>
-              <div className="space-y-1">
-                {uploadedFiles.map((fileName, index) => (
-                  <div key={index} className="text-sm text-emerald-600 dark:text-emerald-400">
-                    ✓ {fileName}
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </div>
+        {uploadedFiles.length > 0 && (
+          <div className="mt-6 pt-4 border-t w-full">
+            <h4 className="text-xs font-semibold text-left mb-2 text-muted-foreground uppercase tracking-wider">
+              Uploaded Files
+            </h4>
+            <div className="space-y-1">
+              {uploadedFiles.map((fileName, index) => (
+                <div key={index} className="flex items-center gap-2 text-sm text-foreground">
+                  <Check className="h-3 w-3 text-primary" />
+                  {fileName}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
-    </motion.div>
+    </div>
   );
 };
 

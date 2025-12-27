@@ -16,10 +16,20 @@ from config import Config
 from database import DatabaseManager
 from ai_manager import AIManager
 from file_manager import FileManager
+from auth import check_password, generate_token, token_required, role_required
+from models import users_db, Role
+from schema_manager import SchemaManager
+from analytics_manager import AnalyticsManager
+import os
+from werkzeug.utils import secure_filename
 
 # Create Flask app and load configuration
 app = Flask(__name__)
 config = Config()
+# Set Flask config from Config object
+app.config['UPLOAD_FOLDER'] = config.UPLOAD_FOLDER
+app.config['MAX_FILE_SIZE'] = config.MAX_FILE_SIZE
+app.config['SECRET_KEY'] = config.SECRET_KEY
 # Configure CORS to only allow configured origins
 CORS(app, origins=config.CORS_ORIGINS)
 
@@ -27,131 +37,290 @@ CORS(app, origins=config.CORS_ORIGINS)
 db_manager = DatabaseManager()
 ai_manager = AIManager()
 file_manager = FileManager()
+schema_manager = SchemaManager()
+analytics_manager = AnalyticsManager(config.UPLOAD_FOLDER)
+
+
+# -------------------- Authentication -------------------- #
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    if not data or not data.get('username') or not data.get('password'):
+        return jsonify({'message': 'Missing credentials'}), 400
+    
+    user = users_db.get(data.get('username'))
+    if not user:
+        # For security, don't reveal if user exists
+        return jsonify({'message': 'Invalid credentials'}), 401
+    
+    if check_password(data.get('password'), user.password_hash):
+        token = generate_token(user.username, user.role.value)
+        return jsonify({
+            'token': token, 
+            'username': user.username, 
+            'role': user.role.value,
+            'permissions': user.permissions
+        })
+    
+    return jsonify({'message': 'Invalid credentials'}), 401
 
 
 # -------------------- MySQL Query Handler -------------------- #
 @app.route('/api/query', methods=['POST'])
-def handle_query():
-    """Handle natural-language -> SQL queries.
-
-    Expected JSON body: { "query": "<natural language>" }
-
-    Flow:
-    - Validate input
-    - Ask AIManager to generate SQL using DB schema
-    - Execute SQL via DatabaseManager
-    - Ask AIManager to produce a short explanation
-    - Return SQL, results and explanation to caller
+@token_required
+def query_database(current_user):
     """
+    Handle natural language queries about the database.
+    Expects JSON: { "query": "your question", "language": "English" }
+    """
+    data = request.json
+    user_query = data.get('query')
+    language = data.get('language', 'English')
+    
+    if not user_query:
+        return jsonify({"error": "No query provided"}), 400
+
     try:
-        data = request.get_json()
-        nl_query = data.get('query')
+        # Check if user is trying to delete/drop (even before generating SQL)
+        query_lower = user_query.lower()
+        if any(keyword in query_lower for keyword in ['delete', 'drop table', 'drop', 'remove table']):
+            # Check if user has delete permission
+            if 'delete' not in current_user.permissions and '*' not in current_user.permissions:
+                return jsonify({
+                    "error": "PERMISSION_DENIED",
+                    "message": f"You don't have permission to delete/drop resources. Only administrators can perform this action. Current role: {current_user.role.value}"
+                }), 403
+        
+        # 1. Get Schema (Dynamic)
+        schema_string = db_manager.get_schema()
 
-        if not nl_query:
-            return jsonify({"error": "Query is required"}), 400
+        # 2. Determine if user has destructive permissions
+        allow_destructive = 'delete' in current_user.permissions or '*' in current_user.permissions
 
-        # Generate SQL query using AI (may raise an Exception on failure)
-        schema = db_manager.get_schema()
-        sql_query = ai_manager.generate_sql_query(nl_query, schema)
+        # 3. Generate SQL
+        sql_query = ai_manager.generate_sql_query(user_query, schema_string, allow_destructive=allow_destructive)
 
-        # Execute the generated SQL and fetch results
+        # 4. Execute SQL
+        # If it's a SELECT, we get results list. If it's DML/DDL, we get a status message or rows affected.
         results = db_manager.execute_query(sql_query)
 
-        # Generate a short explanation of the query/results
-        explanation = ai_manager.generate_query_explanation(sql_query, results)
+        # 5. Generate Explanation (in requested language)
+        explanation = ai_manager.generate_query_explanation(sql_query, results, language=language)
 
         return jsonify({
             "sql": sql_query,
-            "results": results,
+            "results": results if isinstance(results, list) else [],
+            "message": str(results) if not isinstance(results, list) else None,
             "explanation": explanation,
-            "reply": explanation  # For frontend compatibility
+            "reply": explanation 
         })
 
     except Exception as e:
-        # Return a 500 with a clear error message on unexpected failures
         return jsonify({"error": str(e)}), 500
 
-
-
-# -------------------- CSV Upload & Analysis -------------------- #
 @app.route('/api/upload_csv', methods=['POST'])
-def upload_csv():
-    """Save uploaded CSV files to the configured upload folder.
-
-    Expects form-data with key 'files' (can be multiple files).
-    Returns saved file paths on success.
+@token_required
+def upload_csv(current_user):
     """
+    Handle CSV file uploads.
+    Files are saved to 'uploads' folder.
+    """
+    if 'files' not in request.files:
+        return jsonify({"error": "No files part"}), 400
+    
+    files = request.files.getlist('files')
+    saved_files = []
+
     try:
-        files = request.files.getlist('files')
+        upload_folder = config.UPLOAD_FOLDER
+        if not os.path.exists(upload_folder):
+            os.makedirs(upload_folder)
 
-        if not files:
-            return jsonify({"error": "No files uploaded"}), 400
-
-        uploaded_paths = file_manager.save_uploaded_files(files)
-
-        return jsonify({
-            "message": "Files uploaded successfully",
-            "files": uploaded_paths
-        })
-
+        for file in files:
+            if file and file.filename.endswith('.csv'):
+                # Basic filename sanitization
+                filename = secure_filename(file.filename)
+                filepath = os.path.join(upload_folder, filename)
+                file.save(filepath)
+                saved_files.append(filename)
+        
+        return jsonify({"message": f"Successfully uploaded {len(saved_files)} files", "files": saved_files})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/api/analyze_csvs', methods=['POST'])
-def analyze_csvs():
-    """Return an AI-generated analysis of uploaded CSVs.
-
-    The FileManager returns light summaries (columns + small sample) which are
-    sent to the AI manager for relationship analysis.
+@token_required
+def analyze_csvs(current_user):
     """
+    Analyze uploaded CSV files to find relationships.
+    Expects JSON: { "language": "English" } (Optional)
+    """
+    language = request.json.get('language', 'English') if request.json else 'English'
     try:
-        csv_data_summaries = file_manager.get_csv_data_summaries()
+        csv_summaries = file_manager.get_csv_summaries()
+        if not csv_summaries:
+             return jsonify({"analysis": "No CSV files found or files are empty."})
 
-        if not csv_data_summaries:
-            return jsonify({"error": "No CSV files found"}), 400
-
-        analysis = ai_manager.analyze_csv_files(csv_data_summaries)
-
-        return jsonify({
-            "analysis": analysis,
-            "files": list(csv_data_summaries.keys())
-        })
-
+        analysis = ai_manager.analyze_csv_files(csv_summaries, language=language)
+        return jsonify({"analysis": analysis})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/api/query_csv', methods=['POST'])
-def query_csv():
-    """Run a natural language query against uploaded CSV data.
-
-    Expected JSON body: { "query": "<natural language>" }
-    The AI manager receives small CSV samples and returns a textual reply.
+@token_required
+def query_csv(current_user):
     """
+    Query uploaded CSV data.
+    Expects JSON: { "query": "question", "language": "English" }
+    """
+    data = request.json
+    user_query = data.get('query')
+    language = data.get('language', 'English')
+
+    if not user_query:
+        return jsonify({"error": "No query provided"}), 400
+
     try:
-        data = request.get_json()
-        user_query = data.get("query")
-
-        if not user_query:
-            return jsonify({"error": "Query is required"}), 400
-
-        csv_data = file_manager.get_csv_data_for_query()
-
+        csv_data = file_manager.get_csv_content_preview()
         if not csv_data:
-            return jsonify({"error": "No CSV files available for querying"}), 400
+            return jsonify({"response": "No CSV data available to query."})
 
-        response = ai_manager.query_csv_data(user_query, csv_data)
-
-        return jsonify({
-            "response": response,
-            "reply": response  # For frontend compatibility
-        })
-
+        response = ai_manager.query_csv_data(user_query, csv_data, language=language)
+        return jsonify({"response": response})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
+
+# -------------------- Schema Management -------------------- #
+@app.route('/api/schema/tables', methods=['GET'])
+@token_required
+def list_tables(current_user):
+    try:
+        tables = schema_manager.list_tables()
+        return jsonify({"tables": tables})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/schema/tables', methods=['POST'])
+@token_required
+@role_required([Role.ADMIN])
+def create_table(current_user):
+    try:
+        data = request.get_json()
+        table_name = data.get('table_name')
+        columns = data.get('columns')
+        
+        if not table_name or not columns:
+             return jsonify({"error": "table_name and columns are required"}), 400
+             
+        result = schema_manager.create_table(table_name, columns)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/schema/tables/<table_name>', methods=['DELETE'])
+@token_required
+@role_required([Role.ADMIN])
+def delete_table(current_user, table_name):
+    try:
+        result = schema_manager.delete_table(table_name)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -------------------- Analytics & Reporting -------------------- #
+@app.route('/api/analytics/files', methods=['GET'])
+@token_required
+def list_analytics_files(current_user):
+    """List all CSV files available for analytics."""
+    try:
+        files = file_manager.get_csv_files()
+        return jsonify({"files": files})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/analytics/stats', methods=['POST'])
+@token_required
+def get_file_stats(current_user):
+    """
+    Get statistical summary of a CSV file.
+    Expects JSON: { "filename": "data.csv" }
+    """
+    filename = request.json.get('filename')
+    if not filename:
+        return jsonify({"error": "Filename is required"}), 400
+    
+    try:
+        stats = analytics_manager.get_column_stats(filename)
+        return jsonify({"stats": stats})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/analytics/visualize', methods=['POST'])
+@token_required
+def get_visualizations(current_user):
+    filename = request.json.get('filename')
+    if not filename:
+        return jsonify({"error": "Filename is required"}), 400
+    try:
+        plots = analytics_manager.generate_visualizations_base64(filename)
+        return jsonify({"plots": plots})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/analytics/insights', methods=['POST'])
+@token_required
+def get_detailed_insights(current_user):
+    filename = request.json.get('filename')
+    language = request.json.get('language', 'English')
+    if not filename:
+        return jsonify({"error": "Filename is required"}), 400
+    try:
+        stats = analytics_manager.get_column_stats(filename)
+        insights = ai_manager.generate_detailed_insights(stats, language=language)
+        return jsonify({"insights": insights})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/analytics/report', methods=['POST'])
+@token_required
+def generate_report(current_user):
+    """
+    Generate a report (PDF/Excel) for a CSV file.
+    Expects JSON: { "filename": "data.csv", "type": "pdf"|"xlsx", "language": "English" }
+    """
+    data = request.json
+    filename = data.get('filename')
+    report_type = data.get('type', 'pdf')
+    language = data.get('language', 'English')
+    
+    if not filename:
+        return jsonify({"error": "Filename is required"}), 400
+
+    try:
+        # Fetch insights first for the PDF report
+        stats = analytics_manager.get_column_stats(filename)
+        insights = ai_manager.generate_detailed_insights(stats, language=language)
+        
+        report_filename = analytics_manager.generate_report(filename, report_type, language, insights)
+        # Return download URL
+        return jsonify({
+            "message": "Report generated",
+            "download_url": f"/api/download/{report_filename}"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/download/<filename>', methods=['GET'])
+@token_required
+def download_file(current_user, filename):
+    """Download a file from the uploads directory."""
+    try:
+        return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 404
 
 # -------------------- Health Check -------------------- #
 @app.route('/api/health', methods=['GET'])
