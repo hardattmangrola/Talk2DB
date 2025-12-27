@@ -88,16 +88,6 @@ class AIManager:
         # Using gemini-pro-vision (works with SDK 0.8.6)
         self.model = genai.GenerativeModel("gemini-pro")
 
-    def generate_sql_query(self, natural_language_query, schema):
-        """Convert natural language to a SQL SELECT statement.
-
-        Inputs:
-        - natural_language_query: user-provided NL question
-        - schema: textual representation of DB schema to help the model
-
-        Returns a SQL string starting with SELECT or raises an Exception on
-        unsafe or failed generation.
-        """
     def generate_sql_query(self, natural_language_query, schema, allow_destructive=False):
         """Convert natural language query to a SQL statement using Gemini.
         
