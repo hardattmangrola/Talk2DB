@@ -87,7 +87,3 @@ Talk2DB features a professional **Monochromic Glassmorphism** UI.
 - **Admin**: `admin / admin123` (Full Access)
 - **Guest**: `viewer / viewer123` (Read-only Analytics)
 
----
-
-## 📜 License
-*Proprietary - Talk2DB Advanced Analytics Suite*
