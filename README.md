@@ -8,8 +8,7 @@ Talk2DB is a cutting-edge, AI-powered platform designed to bridge the gap betwee
 
 Talk2DB uses a modular architecture combining a robust Python backend with a dynamic React frontend, orchestrated by Google's Gemini AI.
 
-![System Architecture](file:///placeholder_architecture.png)
-*Placeholder: High-level diagram showing Frontend, Backend (Flask), Database (MySQL), and AI (Gemini) interaction.*
+![System Architecture](https://github.com/hardattmangrola/Talk2DB/blob/fd380f7eb557cfc16fc0ed6c94f9915adcbced1e/screenshots/sys_arch.png)
 
 ---
 
@@ -20,16 +19,14 @@ Talk2DB uses a modular architecture combining a robust Python backend with a dyn
 - Support for complex joins, aggregations, and filtering.
 - Multi-language support for global accessibility.
 
-![Chat Interface](file:///placeholder_chat.png)
-*Placeholder: Screenshot of the chat interface showing a natural language query and the resulting data table.*
+![Chat Interface](https://github.com/hardattmangrola/Talk2DB/blob/fd380f7eb557cfc16fc0ed6c94f9915adcbced1e/screenshots/ui0.png)
 
 ### 📊 Advanced Data Analytics
 - **Deep Statistical Analysis**: Automatic calculation of 5-number summaries (Min, Q1, Median, Q3, Max).
 - **Outlier Detection**: Automated identification of data anomalies using IQR methods.
 - **Categorical Distributions**: Instant visualization of top value frequencies.
 
-![Analytics & Detailed Stats](file:///placeholder_analytics.png)
-*Placeholder: Screenshot of the Analytics overlay showing 5-number summaries and categorical distribution bars.*
+![Analytics & Detailed Stats](https://github.com/hardattmangrola/Talk2DB/blob/fd380f7eb557cfc16fc0ed6c94f9915adcbced1e/screenshots/ui1.png)
 
 ### 🧠 Strategic AI Insights
 - **Heuristic Analysis**: Gemini AI analyzes statistical summaries to identify meaningful patterns and strategic opportunities.
@@ -40,9 +37,8 @@ Talk2DB uses a modular architecture combining a robust Python backend with a dyn
 - **File Management**: Upload and organize CSV datasets for instant querying.
 - **Rich Reporting**: Generate comprehensive PDF or Excel reports with embedded charts and AI insights.
 
-![Admin Dashboard & Report Generation](file:///placeholder_dashboard.png)
-*Placeholder: Screenshot of the Admin Dashboard showing the "Analytics & Reports" tab and the PDF download flow.*
-
+![Admin Dashboard & Report Generation](https://github.com/hardattmangrola/Talk2DB/blob/fd380f7eb557cfc16fc0ed6c94f9915adcbced1e/screenshots/ui2.png)
+![Charts](https://github.com/hardattmangrola/Talk2DB/blob/fd380f7eb557cfc16fc0ed6c94f9915adcbced1e/screenshots/ui3.png)
 ### 🔒 Enterprise-Grade Security
 - **RBAC (Role-Based Access Control)**: Granular permissions for Admins, Editors, and Viewers.
 - **SQL Safety**: Strict validation and permission-based execution (Admins can perform DDL/DML; Viewers are SELECT-only).
